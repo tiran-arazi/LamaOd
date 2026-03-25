@@ -1,7 +1,11 @@
 backend/.venv/
+.venv/
+data/
+.env
+.webui_secret_key
+wheels-offline/
 __pycache__/
 *.pyc
-.env
 frontend/node_modules/
 frontend/dist/
 .DS_Store
