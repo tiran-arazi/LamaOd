@@ -1,9 +1,6 @@
 backend/.venv/
 .venv/
-data/
 .env
-.webui_secret_key
-wheels-offline/
 __pycache__/
 *.pyc
 frontend/node_modules/
