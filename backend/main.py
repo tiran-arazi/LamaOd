@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 import httpx
-from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -29,28 +28,17 @@ from pydantic_ai.messages import (
     ToolReturnPart,
 )
 
+import config
+
 from agent import build_agent, dynamic_instructions
 from arcgis_catalog_indexer import ArcGISCatalogStore
 from message_bridge import chat_to_model_messages, split_last_user
 from models import ChatRequest
 from tools.arcgis import ExplorerDeps
 
-_root = Path(__file__).resolve().parent.parent
-load_dotenv(_root / ".env")
-load_dotenv(Path(__file__).resolve().parent / ".env")
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1")
-os.environ.setdefault("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
-
-ARCGIS_CATALOG_URL = os.getenv(
-    "ARCGIS_CATALOG_URL",
-    "https://sampleserver6.arcgisonline.com/arcgis/rest/services",
-)
-# If "false", skip HTTP crawl on startup (use POST /api/catalog/reindex or scripts/reindex_arcgis_rest_catalog.py).
-CATALOG_INDEX_ON_STARTUP = os.getenv("CATALOG_INDEX_ON_STARTUP", "true").lower() in ("1", "true", "yes")
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 httpx_client: httpx.AsyncClient | None = None
@@ -61,7 +49,7 @@ _agent_cache: tuple[str, Agent[ExplorerDeps, str]] | None = None
 def get_agent() -> Agent[ExplorerDeps, str]:
     """Build (or rebuild) the agent when OLLAMA_MODEL_SPEC changes."""
     global _agent_cache
-    spec = os.getenv("OLLAMA_MODEL_SPEC", "ollama:llama3.2:3b")
+    spec = config.OLLAMA_MODEL_SPEC
     if _agent_cache is None or _agent_cache[0] != spec:
         logger.info("Using Ollama model: %s", spec)
         _agent_cache = (spec, build_agent(spec))
@@ -154,9 +142,12 @@ def _log_tool_result_summary(tool_name: str, payload: Any) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global httpx_client, catalog_store
-    httpx_client = httpx.AsyncClient(headers={"User-Agent": "offline-ai-explorer/0.1"})
-    catalog_store = ArcGISCatalogStore(ARCGIS_CATALOG_URL)
-    if CATALOG_INDEX_ON_STARTUP:
+    httpx_client = httpx.AsyncClient(
+        headers={"User-Agent": "offline-ai-explorer/0.1"},
+        verify=config.HTTPX_VERIFY,
+    )
+    catalog_store = ArcGISCatalogStore(config.ARCGIS_CATALOG_URL)
+    if config.CATALOG_INDEX_ON_STARTUP:
         await catalog_store.refresh(httpx_client)
         logger.info(
             "ArcGIS catalog indexed once at startup: %s services",
@@ -177,7 +168,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Offline AI Data Explorer", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://127.0.0.1:5173,http://localhost:5173").split(","),
+    allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -227,7 +218,7 @@ async def _stream_chat(body: ChatRequest) -> AsyncIterator[str]:
 
     history = chat_to_model_messages(prior)
     deps = ExplorerDeps(
-        catalog_root=ARCGIS_CATALOG_URL,
+        catalog_root=config.ARCGIS_CATALOG_URL,
         client=httpx_client,
         catalog=catalog_store,
     )

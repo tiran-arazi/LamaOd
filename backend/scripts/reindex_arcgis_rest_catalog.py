@@ -15,21 +15,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
-import os
 import sys
 from pathlib import Path
 
 import httpx
-from dotenv import load_dotenv
 
 _backend = Path(__file__).resolve().parent.parent
-_root = _backend.parent
 sys.path.insert(0, str(_backend))
 
-load_dotenv(_root / ".env")
-load_dotenv(_backend / ".env")
+import config  # noqa: E402 — loads .env from repo/backend
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("reindex_arcgis_rest_catalog")
@@ -47,14 +42,11 @@ async def main_async() -> int:
     )
     args = parser.parse_args()
 
-    url = os.getenv(
-        "ARCGIS_CATALOG_URL",
-        "https://sampleserver6.arcgisonline.com/arcgis/rest/services",
-    )
-    store = ArcGISCatalogStore(url)
+    store = ArcGISCatalogStore(config.ARCGIS_CATALOG_URL)
     async with httpx.AsyncClient(
         headers={"User-Agent": "offline-ai-explorer/reindex-cli/0.1"},
         timeout=120.0,
+        verify=config.HTTPX_VERIFY,
     ) as client:
         await store.refresh(client)
 

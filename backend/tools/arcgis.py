@@ -79,8 +79,12 @@ async def list_layers(ctx: RunContext[ExplorerDeps], service_path: str) -> dict[
     return {"service_path": service_path, "service_type": suffix, "layers": layers}
 
 
-async def get_layer_schema(ctx: RunContext[ExplorerDeps], service_path: str, layer_id: int) -> dict[str, Any]:
+async def get_layer_schema(ctx: RunContext[ExplorerDeps], service_path: str, layer_id: int | str | None = None) -> dict[str, Any]:
     """Return field definitions for a layer (names, types, aliases). Use these names verbatim in `where` and `orderByFields`."""
+    resolved_id = _coerce_int(layer_id, -1)
+    if resolved_id < 0:
+        resolved_id = _infer_layer_id(ctx.deps, service_path)
+    layer_id = resolved_id
     root = ctx.deps.catalog_root.rstrip("/")
     suffix = _service_suffix(ctx.deps, service_path)
     url = f"{root}/{service_path}/{suffix}/{layer_id}?f=json"
@@ -103,6 +107,31 @@ async def get_layer_schema(ctx: RunContext[ExplorerDeps], service_path: str, lay
     }
 
 
+def _coerce_int(val: Any, default: int) -> int:
+    """Best-effort coerce to int; fall back to *default* for None / empty / garbage."""
+    if val is None:
+        return default
+    if isinstance(val, int):
+        return val
+    if isinstance(val, str):
+        val = val.strip()
+        if not val:
+            return default
+        try:
+            return int(val)
+        except ValueError:
+            return default
+    return default
+
+
+def _infer_layer_id(deps: ExplorerDeps, service_path: str) -> int:
+    """Pick the first layer id from the catalog for *service_path*, or 0 as last resort."""
+    for svc in deps.catalog.index.services:
+        if svc.path == service_path and svc.layers:
+            return svc.layers[0].layer_id
+    return 0
+
+
 async def query_layer(
     ctx: RunContext[ExplorerDeps],
     service_path: Annotated[
@@ -112,11 +141,11 @@ async def query_layer(
         ),
     ],
     layer_id: Annotated[
-        int,
+        int | str | None,
         Field(
-            description="Required integer layer id from list_layers for this service_path (e.g. 0). Do not omit.",
+            description="Integer layer id from list_layers (e.g. 0). If omitted, the first layer of the service is used.",
         ),
-    ],
+    ] = None,
     where: Annotated[
         str,
         Field(
@@ -128,12 +157,17 @@ async def query_layer(
         str | None,
         Field(description="Esri orderByFields, e.g. date_ DESC for newest first. Optional."),
     ] = None,
-    limit: Annotated[int, Field(description="Max rows (resultRecordCount), 1–500.")] = 50,
+    limit: Annotated[int | str | None, Field(description="Max rows (resultRecordCount), 1–500.")] = 50,
 ) -> dict[str, Any]:
     """Query features on a layer (POST .../FeatureServer|MapServer/<id>/query, form-encoded).
 
-    Always pass layer_id from list_layers. Use get_layer_schema for valid field names in where/orderByFields.
+    Prefer passing layer_id from list_layers. Use get_layer_schema for valid field names in where/orderByFields.
     """
+    resolved_layer_id = _coerce_int(layer_id, -1)
+    if resolved_layer_id < 0:
+        resolved_layer_id = _infer_layer_id(ctx.deps, service_path)
+    layer_id = resolved_layer_id
+    limit = _coerce_int(limit, 50)
     root = ctx.deps.catalog_root.rstrip("/")
     suffix = _service_suffix(ctx.deps, service_path)
     query_url = f"{root}/{service_path}/{suffix}/{layer_id}/query"
@@ -157,6 +191,8 @@ async def query_layer(
         attrs = feat.get("attributes")
         if isinstance(attrs, dict):
             rows.append(attrs)
+    # exceededTransferLimit=True means additional features match the query beyond this page
+    # (use resultOffset pagination); it is not an error when features are present.
     out: dict[str, Any] = {
         "service_path": service_path,
         "layer_id": layer_id,

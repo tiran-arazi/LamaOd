@@ -60,7 +60,7 @@ function MetadataCard({
 }
 
 function QueryResultInner({ result }: { result: unknown }) {
-  const data = result as {
+  const data = (result != null && typeof result === "object" ? result : {}) as {
     rows?: Record<string, unknown>[];
     row_count?: number;
     service_path?: string;
@@ -179,7 +179,7 @@ function QueryResultInner({ result }: { result: unknown }) {
 }
 
 function VisualizationInner({ result }: { result: unknown }) {
-  const r = result as {
+  const r = (result != null && typeof result === "object" ? result : {}) as {
     chart_type?: string;
     title?: string;
     records?: Record<string, unknown>[];

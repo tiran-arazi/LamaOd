@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from datetime import datetime, timezone
 
 import httpx
 
+import config
 from models import CatalogIndex, CatalogLayerInfo, CatalogServiceEntry
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ async def _crawl_catalog(client: httpx.AsyncClient, catalog_root: str) -> list[C
     found: list[CatalogServiceEntry] = []
     seen: set[tuple[str, str]] = set()
     paths_taken: set[str] = set()
-    max_services = int(os.getenv("CATALOG_MAX_SERVICES", "25"))
+    max_services = config.CATALOG_MAX_SERVICES
 
     async def visit_folder(path_prefix: str, folder_depth: int) -> None:
         if len(found) >= max_services:
@@ -127,7 +127,7 @@ async def _service_entry(
         return None
     layers_raw = data.get("layers") or []
     layers: list[CatalogLayerInfo] = []
-    max_field_layers = int(os.getenv("CATALOG_MAX_LAYERS_FIELD_DETAIL", "4"))
+    max_field_layers = config.CATALOG_MAX_LAYERS_FIELD_DETAIL
     for i, layer in enumerate(layers_raw):
         lid = layer.get("id")
         if lid is None:
