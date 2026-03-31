@@ -27,6 +27,14 @@ def _require(name: str) -> str:
     return raw.strip()
 
 
+def _optional_str(name: str) -> str | None:
+    """Like ``_require`` but returns ``None`` when unset or blank."""
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return None
+    return raw.strip()
+
+
 def _truthy(raw: str) -> bool:
     return raw.lower() in ("1", "true", "yes")
 
@@ -49,6 +57,8 @@ OLLAMA_BASE_URL = _require("OLLAMA_BASE_URL")
 OLLAMA_MODEL_SPEC = _require("OLLAMA_MODEL_SPEC")
 
 ARCGIS_CATALOG_URL = _require("ARCGIS_CATALOG_URL")
+
+TNUFA_SERVICE_URL = _optional_str("TNUFA_SERVICE_URL")
 
 CATALOG_INDEX_ON_STARTUP = _truthy(_require("CATALOG_INDEX_ON_STARTUP"))
 CATALOG_MAX_SERVICES = int(_require("CATALOG_MAX_SERVICES"))

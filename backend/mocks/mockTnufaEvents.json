@@ -1,0 +1,65 @@
+{
+    "displayFieldName": "Name",
+    "fieldAliases": {
+      "City": "City",
+      "ModerateInjuries": "ModerateInjuries",
+      "SeriousInjuries": "SeriousInjuries",
+      "SevereInjuries": "SevereInjuries",
+      "MinorInjuries": "MinorInjuries"
+    },
+    "fields": [
+      {
+        "name": "City",
+        "type": "esriFieldTypeString",
+        "alias": "City",
+        "length": 1073741822
+      },
+      {
+        "name": "ModerateInjuries",
+        "type": "esriFieldTypeInteger",
+        "alias": "ModerateInjuries"
+      },
+      {
+        "name": "SeriousInjuries",
+        "type": "esriFieldTypeInteger",
+        "alias": "SeriousInjuries"
+      },
+      {
+        "name": "SevereInjuries",
+        "type": "esriFieldTypeInteger",
+        "alias": "SevereInjuries"
+      },
+      {
+        "name": "MinorInjuries",
+        "type": "esriFieldTypeInteger",
+        "alias": "MinorInjuries"
+      }
+    ],
+    "features": [
+      { "attributes": { "City": "בענה", "ModerateInjuries": 1, "SeriousInjuries": 0, "SevereInjuries": 0, "MinorInjuries": 12 } },
+      { "attributes": { "City": "אור עקיבא", "ModerateInjuries": 0, "SeriousInjuries": 0, "SevereInjuries": 2, "MinorInjuries": 5 } },
+      { "attributes": { "City": "חיפה", "ModerateInjuries": 3, "SeriousInjuries": 1, "SevereInjuries": 0, "MinorInjuries": 24 } },
+      { "attributes": { "City": "תל אביב - יפו", "ModerateInjuries": 5, "SeriousInjuries": 2, "SevereInjuries": 1, "MinorInjuries": 40 } },
+      { "attributes": { "City": "באר שבע", "ModerateInjuries": 2, "SeriousInjuries": 0, "SevereInjuries": 0, "MinorInjuries": 18 } },
+      { "attributes": { "City": "ירושלים", "ModerateInjuries": 4, "SeriousInjuries": 3, "SevereInjuries": 1, "MinorInjuries": 35 } },
+      { "attributes": { "City": "ראשון לציון", "ModerateInjuries": 1, "SeriousInjuries": 0, "SevereInjuries": 0, "MinorInjuries": 22 } },
+      { "attributes": { "City": "פתח תקווה", "ModerateInjuries": 2, "SeriousInjuries": 1, "SevereInjuries": 0, "MinorInjuries": 19 } },
+      { "attributes": { "City": "אשדוד", "ModerateInjuries": 3, "SeriousInjuries": 0, "SevereInjuries": 1, "MinorInjuries": 14 } },
+      { "attributes": { "City": "נתניה", "ModerateInjuries": 0, "SeriousInjuries": 2, "SevereInjuries": 0, "MinorInjuries": 11 } },
+      { "attributes": { "City": "חולון", "ModerateInjuries": 1, "SeriousInjuries": 1, "SevereInjuries": 0, "MinorInjuries": 9 } },
+      { "attributes": { "City": "בני ברק", "ModerateInjuries": 0, "SeriousInjuries": 0, "SevereInjuries": 0, "MinorInjuries": 7 } },
+      { "attributes": { "City": "רמת גן", "ModerateInjuries": 2, "SeriousInjuries": 0, "SevereInjuries": 1, "MinorInjuries": 13 } },
+      { "attributes": { "City": "רחובות", "ModerateInjuries": 1, "SeriousInjuries": 0, "SevereInjuries": 0, "MinorInjuries": 10 } },
+      { "attributes": { "City": "אשקלון", "ModerateInjuries": 4, "SeriousInjuries": 2, "SevereInjuries": 0, "MinorInjuries": 28 } },
+      { "attributes": { "City": "הרצליה", "ModerateInjuries": 0, "SeriousInjuries": 1, "SevereInjuries": 0, "MinorInjuries": 6 } },
+      { "attributes": { "City": "כפר סבא", "ModerateInjuries": 1, "SeriousInjuries": 0, "SevereInjuries": 0, "MinorInjuries": 4 } },
+      { "attributes": { "City": "חדרה", "ModerateInjuries": 2, "SeriousInjuries": 1, "SevereInjuries": 1, "MinorInjuries": 12 } },
+      { "attributes": { "City": "רעננה", "ModerateInjuries": 0, "SeriousInjuries": 0, "SevereInjuries": 0, "MinorInjuries": 3 } },
+      { "attributes": { "City": "מודיעין-מכבים-רעות", "ModerateInjuries": 1, "SeriousInjuries": 0, "SevereInjuries": 0, "MinorInjuries": 5 } },
+      { "attributes": { "City": "נהריה", "ModerateInjuries": 3, "SeriousInjuries": 1, "SevereInjuries": 0, "MinorInjuries": 20 } },
+      { "attributes": { "City": "בית שמש", "ModerateInjuries": 0, "SeriousInjuries": 0, "SevereInjuries": 0, "MinorInjuries": 8 } },
+      { "attributes": { "City": "לוד", "ModerateInjuries": 2, "SeriousInjuries": 1, "SevereInjuries": 0, "MinorInjuries": 11 } },
+      { "attributes": { "City": "רמלה", "ModerateInjuries": 1, "SeriousInjuries": 0, "SevereInjuries": 1, "MinorInjuries": 9 } },
+      { "attributes": { "City": "נצרת", "ModerateInjuries": 2, "SeriousInjuries": 0, "SevereInjuries": 0, "MinorInjuries": 15 } }
+    ]
+  }

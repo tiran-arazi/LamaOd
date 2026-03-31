@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -30,11 +31,20 @@ from pydantic_ai.messages import (
 
 import config
 
-from agent import build_agent, dynamic_instructions
+from agent import (
+    RouteDecision,
+    build_conversation_agent,
+    build_esri_agent,
+    build_router_agent,
+    build_tnufa_agent,
+    build_unknown_data_agent,
+    esri_dynamic_instructions,
+)
 from arcgis_catalog_indexer import ArcGISCatalogStore
 from message_bridge import chat_to_model_messages, split_last_user
 from models import ChatRequest
 from tools.arcgis import ExplorerDeps
+from tools.tnufa import TnufaDeps
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,21 +53,180 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 httpx_client: httpx.AsyncClient | None = None
 catalog_store: ArcGISCatalogStore | None = None
-_agent_cache: tuple[str, Agent[ExplorerDeps, str]] | None = None
+
+_router_cache: tuple[str, Agent[None, RouteDecision]] | None = None
+_esri_cache: tuple[str, Agent[ExplorerDeps, str]] | None = None
+_conversation_cache: tuple[str, Agent[None, str]] | None = None
+_tnufa_cache: tuple[str, Agent[TnufaDeps, str]] | None = None
+_unknown_data_cache: tuple[str, Agent[None, str]] | None = None
 
 
-def get_agent() -> Agent[ExplorerDeps, str]:
-    """Build (or rebuild) the agent when OLLAMA_MODEL_SPEC changes."""
-    global _agent_cache
-    spec = config.OLLAMA_MODEL_SPEC
-    if _agent_cache is None or _agent_cache[0] != spec:
-        logger.info("Using Ollama model: %s", spec)
-        _agent_cache = (spec, build_agent(spec))
-    return _agent_cache[1]
+def _current_spec() -> str:
+    return config.OLLAMA_MODEL_SPEC
+
+
+def get_router_agent() -> Agent[None, RouteDecision]:
+    global _router_cache
+    spec = _current_spec()
+    if _router_cache is None or _router_cache[0] != spec:
+        logger.info("Building router agent with model: %s", spec)
+        _router_cache = (spec, build_router_agent(spec))
+    return _router_cache[1]
+
+
+def get_esri_agent() -> Agent[ExplorerDeps, str]:
+    global _esri_cache
+    spec = _current_spec()
+    if _esri_cache is None or _esri_cache[0] != spec:
+        logger.info("Building ESRI agent with model: %s", spec)
+        _esri_cache = (spec, build_esri_agent(spec))
+    return _esri_cache[1]
+
+
+def get_conversation_agent() -> Agent[None, str]:
+    global _conversation_cache
+    spec = _current_spec()
+    if _conversation_cache is None or _conversation_cache[0] != spec:
+        logger.info("Building conversation agent with model: %s", spec)
+        _conversation_cache = (spec, build_conversation_agent(spec))
+    return _conversation_cache[1]
+
+
+def get_tnufa_agent() -> Agent[TnufaDeps, str]:
+    global _tnufa_cache
+    spec = _current_spec()
+    if _tnufa_cache is None or _tnufa_cache[0] != spec:
+        logger.info("Building Tnufa agent with model: %s", spec)
+        _tnufa_cache = (spec, build_tnufa_agent(spec))
+    return _tnufa_cache[1]
+
+
+def get_unknown_data_agent() -> Agent[None, str]:
+    global _unknown_data_cache
+    spec = _current_spec()
+    if _unknown_data_cache is None or _unknown_data_cache[0] != spec:
+        logger.info("Building unknown-data fallback agent with model: %s", spec)
+        _unknown_data_cache = (spec, build_unknown_data_agent(spec))
+    return _unknown_data_cache[1]
 
 
 def _sse(obj: dict[str, Any]) -> str:
     return f"data: {json.dumps(obj, default=str, ensure_ascii=False)}\n\n"
+
+
+def _is_conversation_shortcut(text: str) -> bool:
+    """Fast path for obvious small-talk/greeting messages."""
+    normalized = re.sub(r"\s+", " ", text.strip().lower())
+    if not normalized:
+        return True
+
+    # If any GIS-ish token appears, do not shortcut.
+    gis_tokens = (
+        "arcgis",
+        "mapserver",
+        "featureserver",
+        "layer",
+        "service",
+        "query",
+        "geometry",
+        "feature",
+        "where ",
+        "out_fields",
+        "orderbyfields",
+        "earthquake",
+        "catalog",
+        "gis",
+        "tnufa",
+        "תנופה",
+        "פצועים",
+        "נפגעים",
+        "פגיעות",
+        "injuries",
+        "casualt",
+    )
+    if any(token in normalized for token in gis_tokens):
+        return False
+
+    casual_patterns = (
+        r"^(hi|hey|hello|yo)\b",
+        r"\bhow are you\b",
+        r"^(thanks|thank you|thx)\b",
+        r"^(good morning|good afternoon|good evening)\b",
+        r"^(what can you do|who are you)\??$",
+    )
+    if any(re.search(pattern, normalized) for pattern in casual_patterns):
+        return True
+
+    # Keep ambiguous short prompts on the router path.
+    return False
+
+
+_TNUFA_CITY_NAMES_HE = (
+    "בענה", "אור עקיבא", "חיפה", "תל אביב", "באר שבע", "ירושלים",
+    "ראשון לציון", "פתח תקווה", "אשדוד", "נתניה", "חולון", "בני ברק",
+    "רמת גן", "רחובות", "אשקלון", "הרצליה", "כפר סבא", "חדרה",
+    "רעננה", "מודיעין", "נהריה", "בית שמש", "לוד", "רמלה", "נצרת",
+)
+_TNUFA_CITY_NAMES_EN = (
+    "tel aviv", "jerusalem", "haifa", "beer sheva", "be'er sheva",
+    "beersheba", "rishon lezion", "petah tikva", "ashdod", "netanya",
+    "holon", "bnei brak", "ramat gan", "rehovot", "ashkelon", "herzliya",
+    "kfar saba", "hadera", "raanana", "modiin", "nahariya", "beit shemesh",
+    "lod", "ramla", "nazareth", "or akiva", "baana",
+)
+
+
+def _looks_like_tnufa_data_request(text: str) -> bool:
+    """Heuristic route to Tnufa without relying on the router model."""
+    raw = text.strip()
+    if not raw:
+        return False
+    low = re.sub(r"\s+", " ", raw.lower())
+
+    hebrew_injury = ("פצועים", "פצוע", "נפגעים", "נפגע", "פגיעות", "תנופה")
+    if any(h in raw for h in hebrew_injury):
+        return True
+
+    if "tnufa" in low:
+        return True
+
+    injury_en = ("injuries", "injury", "injured", "casualt", "wounded")
+    place_en = ("city", "cities", "by city", "per city", "town", "municipal")
+    data_en = ("how many", "count", "counts", "number of", "statistics", "stats", "top")
+    data_he = ("כמה", "מספר", "סטטיסטיקה", "נתונים", "סך", "סה\"כ")
+
+    has_injury = any(k in low for k in injury_en)
+    has_place = any(k in low for k in place_en)
+    asks_for_data = any(k in low for k in data_en) or any(k in raw for k in data_he)
+    has_known_city = (
+        any(c in raw for c in _TNUFA_CITY_NAMES_HE)
+        or any(c in low for c in _TNUFA_CITY_NAMES_EN)
+    )
+
+    if has_injury and (has_place or has_known_city):
+        return True
+
+    if has_injury and asks_for_data:
+        if re.search(r"\bhow\s+(many|much)\b", low):
+            return True
+        if re.search(r"\b(injur\w+|casualt\w+|wounded)\b.*\b(in|at|near|for|from)\s+", low):
+            return True
+
+    return False
+
+
+def _router_fallback_route(text: str) -> str:
+    """When the LLM router cannot produce valid structured output, use cheap heuristics."""
+    if _looks_like_tnufa_data_request(text):
+        return "tnufa"
+    low = re.sub(r"\s+", " ", text.strip().lower())
+    esri_hints = (
+        "earthquake", "magnitude", "mapserver", "featureserver",
+        "layer", "arcgis", "catalog", "geometry", "spatial", "census",
+    )
+    if any(h in low for h in esri_hints):
+        return "esri"
+    return "unknown_data"
 
 
 def _serialize_tool_args(args: Any) -> Any:
@@ -158,7 +327,11 @@ async def lifespan(app: FastAPI):
             "ArcGIS catalog startup crawl skipped (CATALOG_INDEX_ON_STARTUP=false); "
             "run scripts/reindex_arcgis_rest_catalog.py or POST /api/catalog/reindex",
         )
-    get_agent()
+    get_router_agent()
+    get_esri_agent()
+    get_conversation_agent()
+    get_tnufa_agent()
+    get_unknown_data_agent()
     yield
     if httpx_client:
         await httpx_client.aclose()
@@ -217,22 +390,53 @@ async def _stream_chat(body: ChatRequest) -> AsyncIterator[str]:
         return
 
     history = chat_to_model_messages(prior)
-    deps = ExplorerDeps(
-        catalog_root=config.ARCGIS_CATALOG_URL,
-        client=httpx_client,
-        catalog=catalog_store,
-    )
-    instructions = dynamic_instructions(catalog_store.prompt_summary())
     preview = user_text.strip().replace("\n", " ")[:120]
     logger.info("chat run start user_preview=%r", preview)
 
-    try:
-        async for event in get_agent().run_stream_events(
-            user_text,
+    # --- Route: conversation shortcut → obvious Tnufa (keywords) → model router ---
+    if _is_conversation_shortcut(user_text):
+        route = "conversation"
+    elif _looks_like_tnufa_data_request(user_text):
+        route = "tnufa"
+    else:
+        try:
+            route_result = await get_router_agent().run(user_text)
+            route = route_result.output.route
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Router agent failed (%s), using heuristic fallback", exc)
+            route = _router_fallback_route(user_text)
+    logger.info("chat route=%s", route)
+
+    # --- Select agent and prepare run kwargs ---
+    if route == "unknown_data":
+        agent = get_unknown_data_agent()
+        run_kwargs: dict[str, Any] = dict(message_history=history)
+    elif route == "tnufa":
+        agent = get_tnufa_agent()
+        run_kwargs = dict(
             message_history=history,
-            deps=deps,
-            instructions=instructions,
-        ):
+            deps=TnufaDeps(
+                client=httpx_client,
+                service_url=config.TNUFA_SERVICE_URL,
+            ),
+        )
+    elif route == "esri":
+        agent = get_esri_agent()
+        run_kwargs = dict(
+            message_history=history,
+            deps=ExplorerDeps(
+                catalog_root=config.ARCGIS_CATALOG_URL,
+                client=httpx_client,
+                catalog=catalog_store,
+            ),
+            instructions=esri_dynamic_instructions(catalog_store.prompt_summary()),
+        )
+    else:
+        agent = get_conversation_agent()
+        run_kwargs = dict(message_history=history)
+
+    try:
+        async for event in agent.run_stream_events(user_text, **run_kwargs):
             # PartStartEvent carries the first chunk of a text part (and often the *entire* final
             # assistant message after tool calls when the provider does not emit further deltas).
             if isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
