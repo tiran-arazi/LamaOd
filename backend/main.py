@@ -41,7 +41,9 @@ from agent import (
     esri_dynamic_instructions,
 )
 from arcgis_catalog_indexer import ArcGISCatalogStore
+from catalog_rag import CatalogRAG
 from message_bridge import chat_to_model_messages, split_last_user
+from rag_registry import register_rag_layers
 from models import ChatRequest
 from tools.arcgis import ExplorerDeps
 from tools.tnufa import TnufaDeps
@@ -53,6 +55,9 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 httpx_client: httpx.AsyncClient | None = None
 catalog_store: ArcGISCatalogStore | None = None
+catalog_rag: CatalogRAG | None = None
+
+RAG_CONFIDENCE_THRESHOLD = 0.55
 
 _router_cache: tuple[str, Agent[None, RouteDecision]] | None = None
 _esri_cache: tuple[str, Agent[ExplorerDeps, str]] | None = None
@@ -310,7 +315,7 @@ def _log_tool_result_summary(tool_name: str, payload: Any) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global httpx_client, catalog_store
+    global httpx_client, catalog_store, catalog_rag
     httpx_client = httpx.AsyncClient(
         headers={"User-Agent": "offline-ai-explorer/0.1"},
         verify=config.HTTPX_VERIFY,
@@ -327,6 +332,19 @@ async def lifespan(app: FastAPI):
             "ArcGIS catalog startup crawl skipped (CATALOG_INDEX_ON_STARTUP=false); "
             "run scripts/reindex_arcgis_rest_catalog.py or POST /api/catalog/reindex",
         )
+
+    catalog_rag = CatalogRAG(config.OLLAMA_BASE_URL, config.OLLAMA_EMBED_MODEL)
+    register_rag_layers(catalog_rag)
+    await catalog_rag.embed(httpx_client)
+    if catalog_rag.ready:
+        logger.info("CatalogRAG ready (model=%s)", config.OLLAMA_EMBED_MODEL)
+    else:
+        logger.warning(
+            "CatalogRAG not available — using keyword/LLM routing only. "
+            "Pull '%s' in Ollama to enable semantic routing.",
+            config.OLLAMA_EMBED_MODEL,
+        )
+
     get_router_agent()
     get_esri_agent()
     get_conversation_agent()
@@ -393,8 +411,22 @@ async def _stream_chat(body: ChatRequest) -> AsyncIterator[str]:
     preview = user_text.strip().replace("\n", " ")[:120]
     logger.info("chat run start user_preview=%r", preview)
 
-    # --- Route: conversation shortcut → obvious Tnufa (keywords) → model router ---
-    if _is_conversation_shortcut(user_text):
+    # --- Route: RAG (semantic) → conversation shortcut → Tnufa keywords → model router ---
+    rag_route: str | None = None
+    if catalog_rag and catalog_rag.ready:
+        try:
+            matches = await catalog_rag.search(user_text, httpx_client, top_k=1)
+            if matches and matches[0].score >= RAG_CONFIDENCE_THRESHOLD:
+                rag_route = matches[0].chunk.route_label
+                logger.info(
+                    "RAG route=%s score=%.3f", rag_route, matches[0].score
+                )
+        except Exception:  # noqa: BLE001
+            logger.warning("RAG search failed, continuing with fallback routing")
+
+    if rag_route:
+        route = rag_route
+    elif _is_conversation_shortcut(user_text):
         route = "conversation"
     elif _looks_like_tnufa_data_request(user_text):
         route = "tnufa"

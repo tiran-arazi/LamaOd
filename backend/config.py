@@ -55,6 +55,7 @@ HTTPX_VERIFY = _httpx_verify()
 
 OLLAMA_BASE_URL = _require("OLLAMA_BASE_URL")
 OLLAMA_MODEL_SPEC = _require("OLLAMA_MODEL_SPEC")
+OLLAMA_EMBED_MODEL = _optional_str("OLLAMA_EMBED_MODEL") or "nomic-embed-text"
 
 ARCGIS_CATALOG_URL = _require("ARCGIS_CATALOG_URL")
 
